@@ -4,11 +4,11 @@ x-airflow-common: &airflow-common
   image: apache/airflow:2.7.1-python3.10
   environment:
     - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-    - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
-    - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+    - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflowpassword@airflow-db:5432/airflow
+    - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflowpassword@airflow-db:5432/airflow
     - AIRFLOW__CORE__LOAD_EXAMPLES=false
     - AIRFLOW__CORE__LOGGING_LEVEL=INFO
-    - _PIP_ADDITIONAL_REQUIREMENTS=sqlalchemy psycopg2-binary great-expectations dbt-postgres dbt-bigquery python-dotenv
+    - _PIP_ADDITIONAL_REQUIREMENTS=sqlalchemy psycopg2-binary dbt-postgres python-dotenv
     - DBT_HOST=source-db
     - DBT_USER=postgres
     - DBT_ENV_SECRET_PASSWORD=postgrespassword
