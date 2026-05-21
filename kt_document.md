@@ -1,0 +1,264 @@
+# DataBridge Knowledge Transfer Document
+### Automated Batch ETL Pipeline — Airflow · dbt · BigQuery · GCS
+
+| Field | Details |
+| :--- | :--- |
+| **Project Name** | DataBridge |
+| **Prepared For** | Antigravity Team |
+| **Prepared By** | Data Engineering Team |
+| **Document Version** | v1.0 |
+| **Date** | May 2026 |
+| **Status** | Active — In Development |
+
+---
+
+## 1. Project Overview
+DataBridge is an automated, end-to-end batch ETL (Extract, Transform, Load) pipeline that bridges raw external data to clean, analytics-ready tables in a cloud data warehouse. It eliminates manual data preparation work and ensures analysts and stakeholders always have fresh, reliable data.
+
+### 1.1 What it does
+*   Extracts data daily from external sources (APIs, CSV files, databases)
+*   Validates raw data quality before any processing begins
+*   Stores raw data in Google Cloud Storage as Parquet files
+*   Transforms data through Bronze → Silver → Gold layers using dbt
+*   Loads clean, analytics-ready tables into BigQuery
+*   Notifies the team via email/Slack if any step fails
+
+### 1.2 Problem it solves
+Before DataBridge, data sat in raw files and analysts had to manually clean and prepare it before building any reports. This caused delays, inconsistencies, and wasted engineering time. DataBridge automates the entire process so that clean data is always available without human intervention.
+
+### 1.3 Who uses it
+| Stakeholder | How they benefit |
+| :--- | :--- |
+| **Data Analysts** | Query clean BigQuery tables directly — no manual prep needed |
+| **Business / Product Managers** | Dashboards and reports are always up to date |
+| **Data Engineers** | Reusable, extensible pipeline template for new data sources |
+| **Antigravity Team** | Plug into reliable data with zero pipeline management |
+
+---
+
+## 2. Architecture & Data Flow
+
+### 2.1 High-level flow
+DataBridge follows a unidirectional data flow from raw sources to the serving layer:
+
+| Stage | Component | Description |
+| :--- | :--- | :--- |
+| **1. Extract** | Python + Airflow | Pull data from APIs, CSV files, or databases daily |
+| **2. Validate** | Great Expectations | Check schema, nulls, data types before writing |
+| **3. Store (Raw)** | Google Cloud Storage | Write raw Parquet files partitioned by date |
+| **4. Transform** | dbt Core | Run SQL models: Staging → Intermediate → Mart |
+| **5. Load** | BigQuery | Serve analytics-ready tables to consumers |
+| **6. Orchestrate** | Apache Airflow | Schedule, monitor, retry, and alert on all tasks |
+| **7. Alert** | Email / Slack | Notify team on pipeline success or failure |
+
+### 2.2 Client-server architecture
+DataBridge uses a standard client-server model. The server handles all pipeline logic; clients interact through a REST API.
+
+#### Client Side
+*   **Dashboard / UI** (Metabase or Grafana) — queries data from BigQuery via the API
+*   **API Consumer** (Python scripts / Postman) — triggers pipeline runs or fetches data
+*   **Scheduler Trigger** (cron job or manual) — kicks off Airflow DAGs on schedule
+
+*HTTP REST BOUNDARY: All client-server communication goes through the FastAPI gateway. Clients never talk directly to Airflow, GCS, or BigQuery.*
+
+#### Server Side
+*   **FastAPI Gateway** — exposes REST endpoints for triggering and querying
+*   **Apache Airflow** — orchestrates the full pipeline as a DAG
+*   **Google Cloud Storage** — raw data lake (Bronze layer)
+*   **dbt Core** — SQL transformation engine (Staging → Intermediate → Mart)
+*   **BigQuery** — cloud data warehouse serving analytics tables
+*   **Alerting** — Slack/email notifications on run status
+
+### 2.3 Data layers (dbt)
+| Layer Name | Purpose |
+| :--- | :--- |
+| **Bronze** | Raw GCS files: Unmodified source data, stored as Parquet |
+| **Silver** | Staging + Intermediate: Cleaned, renamed, joined, deduplicated |
+| **Gold** | Mart models: Business-ready aggregated tables for reporting |
+
+---
+
+## 3. Technology Stack
+
+| Tool | Role | Cost |
+| :--- | :--- | :--- |
+| **Apache Airflow** | Pipeline orchestration and scheduling | Free (self-hosted) |
+| **dbt Core** | SQL-based data transformation | Free (open source) |
+| **Google Cloud Storage** | Raw data lake storage (Parquet) | Free tier (5GB) |
+| **BigQuery** | Cloud data warehouse | Free tier (10GB + 1TB queries/mo) |
+| **FastAPI** | REST API gateway (Python) | Free (open source) |
+| **Great Expectations** | Data quality and validation | Free (open source) |
+| **Python 3.10+** | Extraction scripts and glue code | Free |
+| **Docker** | Local environment for Airflow | Free |
+
+*Total infrastructure cost: $0 using free tiers. Suitable for development and demo workloads.*
+
+---
+
+## 4. Setup & Local Development
+
+### 4.1 Prerequisites
+*   Python 3.10+
+*   Docker Desktop (for Airflow local setup)
+*   Google Cloud account (free tier)
+*   GCS bucket created
+*   BigQuery dataset created
+*   dbt Core installed: `pip install dbt-bigquery`
+
+### 4.2 Repository structure
+| Folder / File | Purpose |
+| :--- | :--- |
+| **dags/** | Airflow DAG definitions |
+| **dbt/models/staging/** | Silver layer dbt models |
+| **dbt/models/marts/** | Gold layer dbt mart models |
+| **dbt/tests/** | dbt data quality tests |
+| **src/extract/** | Python extraction scripts |
+| **src/validate/** | Great Expectations suites |
+| **api/** | FastAPI gateway code |
+| **docker-compose.yml** | Local Airflow setup |
+| **dbt/profiles.yml** | BigQuery connection config |
+| **.env.example** | Environment variable template |
+
+### 4.3 Environment variables
+*   `GCS_BUCKET_NAME` — name of your GCS bucket
+*   `BIGQUERY_PROJECT` — your GCP project ID
+*   `BIGQUERY_DATASET` — target BigQuery dataset name
+*   `GOOGLE_APPLICATION_CREDENTIALS` — path to GCP service account JSON
+*   `AIRFLOW_CONN_GOOGLE_CLOUD_DEFAULT` — Airflow GCP connection string
+*   `SLACK_WEBHOOK_URL` — for pipeline failure notifications
+
+### 4.4 Running locally
+1. Clone the repository and copy `.env.example` to `.env`
+2. Run `docker-compose up` to start Airflow locally
+3. Access Airflow UI at `http://localhost:8080`
+4. Trigger the `databridge_daily` DAG manually to test
+5. Run dbt models: `dbt run --profiles-dir .` from the `dbt/` folder
+6. Check BigQuery for output tables
+
+---
+
+## 5. Pipeline Details
+
+### 5.1 Airflow DAG — databridge_daily
+The main DAG runs daily at 06:00 UTC and has the following task sequence:
+
+| Task ID | What it does | On failure |
+| :--- | :--- | :--- |
+| **extract_raw_data** | Calls source API or reads CSV, writes to GCS as Parquet | Retry 3x, then alert |
+| **validate_raw_data** | Runs Great Expectations suite on GCS file | Skip to alert, do NOT proceed |
+| **trigger_dbt_run** | Runs dbt models (staging → marts) against BigQuery | Retry 2x, then alert |
+| **run_dbt_tests** | Runs dbt tests (nulls, uniqueness, relationships) | Alert team, mark failed |
+| **send_success_alert** | Posts success message to Slack | Best effort only |
+| **send_failure_alert** | Posts failure message with task name to Slack | Runs on any upstream failure |
+
+### 5.2 dbt models
+*   `stg_source_data` — staging model: renames columns, casts types, removes nulls
+*   `int_cleaned_data` — intermediate: joins lookup tables, deduplicates
+*   `mart_daily_summary` — mart: aggregated daily metrics for dashboards
+*   `mart_entity_details` — mart: entity-level detail table for deep-dive queries
+
+### 5.3 Data quality checks
+*   **Schema validation** — column names and types match expected schema
+*   **Not-null checks** — primary key and required fields are never null
+*   **Uniqueness checks** — no duplicate primary keys in output tables
+*   **Referential integrity** — foreign keys resolve correctly in joined models
+*   **Volume checks** — alert if row count drops below expected threshold
+
+---
+
+## 6. API Reference (FastAPI)
+The FastAPI gateway exposes the following REST endpoints:
+
+| Method | Endpoint | Description | Auth required |
+| :--- | :--- | :--- | :--- |
+| **GET** | `/health` | Returns pipeline status and last run timestamp | No |
+| **POST** | `/pipeline/trigger` | Manually triggers the Airflow DAG | Yes (API key) |
+| **GET** | `/pipeline/status` | Returns status of the latest DAG run | Yes (API key) |
+| **GET** | `/data/latest` | Returns the most recent mart table snapshot as JSON | Yes (API key) |
+| **GET** | `/data/summary?date=` | Returns `mart_daily_summary` for a given date | Yes (API key) |
+
+*Authentication uses API key passed as a header: `X-API-Key: <your-key>`. Keys are set in the `.env` file.*
+
+---
+
+## 7. Monitoring & Alerting
+
+### 7.1 What is monitored
+*   Pipeline run status — success, failed, or skipped in Airflow UI
+*   Data quality results — Great Expectations validation suite output
+*   dbt test results — pass/fail per model after each run
+*   Row count trends — BigQuery tables checked against expected volume
+
+### 7.2 Alert channels
+| Event | Channel | Severity |
+| :--- | :--- | :--- |
+| **Pipeline task failure** | Slack `#databridge-alerts` | High |
+| **Data validation failure** | Slack `#databridge-alerts` | High |
+| **dbt test failure** | Slack `#databridge-alerts` | Medium |
+| **Pipeline success (daily)** | Slack `#databridge-status` | Info |
+| **Volume drop below threshold** | Slack `#databridge-alerts` | Medium |
+
+### 7.3 Airflow UI access
+*   **Local**: `http://localhost:8080` (username: `admin`, password: set in `.env`)
+*   You can pause, unpause, trigger, and view logs for any DAG from the UI.
+*   Task instance logs show the full output of each pipeline step.
+
+---
+
+## 8. Known Limitations & Future Improvements
+
+### 8.1 Current limitations
+*   Runs on free tier infrastructure — not suitable for large-scale production workloads yet
+*   No incremental loading — full table refresh on every run (planned: CDC with Debezium)
+*   Single data source configured — adding new sources requires manual DAG updates
+*   No real-time streaming — pipeline is batch only (daily cadence)
+*   Alerting is one-way — no auto-remediation on failure
+
+### 8.2 Planned improvements
+*   Add incremental loading with Change Data Capture (CDC) using Debezium
+*   Support multiple data sources via a configuration-driven DAG
+*   Add real-time streaming layer with Kafka + Spark for sub-daily use cases
+*   Move to Terraform for infrastructure-as-code deployment
+*   Add data lineage tracking with OpenLineage
+
+---
+
+## 9. Contacts & Ownership
+*   **Project Owner**: Data Engineering Team (Architecture decisions, roadmap)
+*   **Pipeline Maintainer**: Data Engineering Team (DAG updates, dbt models, bug fixes)
+*   **Airflow Admin**: Data Engineering Team (DAG scheduling, connection management)
+*   **BigQuery Admin**: Data Engineering Team (Dataset permissions, schema changes)
+*   **Escalation Contact**: Antigravity Team Lead (Business requirements, priority calls)
+
+### 9.1 Repositories & resources
+*   **GitHub Repo**: `github.com/your-org/databridge`
+*   **Airflow UI**: `http://localhost:8080` (local) or your cloud Airflow URL
+*   **BigQuery Console**: `console.cloud.google.com/bigquery`
+*   **GCS Bucket**: `console.cloud.google.com/storage`
+*   **dbt docs (local)**: Run `dbt docs generate && dbt docs serve`
+
+---
+
+## 10. FAQ for Antigravity Team
+
+#### Q: How do I check if the pipeline ran today?
+Open the Airflow UI and look at the `databridge_daily` DAG. A green circle means success. You can also call `GET /pipeline/status` from the API.
+
+#### Q: Where do I find the final clean data?
+All clean tables are in BigQuery under the dataset configured in `.env`. The main tables are `mart_daily_summary` and `mart_entity_details`.
+
+#### Q: What do I do if the pipeline fails?
+You will get a Slack alert with the failing task name. Open Airflow, click the failed task, and check the logs. For data quality failures, do not re-trigger until the source data issue is fixed.
+
+#### Q: Can I add a new data source?
+Yes. You need to:
+1. Write an extraction script in `src/extract/`
+2. Add a new Airflow task to the DAG
+3. Add a GE validation suite
+4. Write dbt models for the new source
+
+#### Q: How often does the pipeline run?
+Once daily at 06:00 UTC by default. You can change the schedule in the DAG definition or trigger a manual run from the Airflow UI or the `/pipeline/trigger` API endpoint.
+
+#### Q: Is the data fresh?
+Yes — by 07:00 UTC every day, all BigQuery mart tables reflect the previous day's data. The pipeline SLA is 60 minutes from trigger to completion.

@@ -1,0 +1,79 @@
+version: '3.8'
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.7.1-python3.10
+  environment:
+    - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+    - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+    - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+    - AIRFLOW__CORE__LOAD_EXAMPLES=false
+    - AIRFLOW__CORE__LOGGING_LEVEL=INFO
+    - _PIP_ADDITIONAL_REQUIREMENTS=sqlalchemy psycopg2-binary great-expectations dbt-postgres dbt-bigquery python-dotenv
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./server:/opt/airflow/server
+    - ./dbt:/opt/airflow/dbt
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    airflow-db:
+      condition: service_healthy
+
+services:
+  # 1. Source Database representing local Supabase (PostgreSQL)
+  source-db:
+    image: postgres:15-alpine
+    container_name: databridge-source-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: ecom_production
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_source_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ecom_production"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. Database for Airflow Metadata
+  airflow-db:
+    image: postgres:15-alpine
+    container_name: databridge-airflow-db
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflowpassword
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres_airflow_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 3. Airflow Webserver
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: databridge-airflow-webserver
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: always
+
+  # 4. Airflow Scheduler
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: databridge-airflow-scheduler
+    command: scheduler
+    restart: always
+
+volumes:
+  postgres_source_data:
+  postgres_airflow_data:
