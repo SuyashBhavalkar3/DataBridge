@@ -1,0 +1,20 @@
+version: 2
+
+models:
+  - name: mart_daily_summary
+    description: "Daily aggregated e-commerce sales performance metrics."
+    columns:
+      - name: order_day
+        description: "The primary key of the daily summary."
+        tests:
+          - unique
+          - not_null
+
+  - name: mart_category_performance
+    description: "Product category performance aggregates (revenue and volume)."
+    columns:
+      - name: category
+        description: "The name of the product category."
+        tests:
+          - unique
+          - not_null

@@ -1,0 +1,9 @@
+version: 2
+
+sources:
+  - name: ecom_raw
+    schema: public
+    tables:
+      - name: source_customers
+      - name: source_products
+      - name: source_orders

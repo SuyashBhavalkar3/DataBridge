@@ -1,3 +1,22 @@
 .env
 *.env
 server/.env
+
+# Python
+__pycache__/
+*.pyc
+server/dataBridge_env/
+server/ecommerce.db
+
+# Node / Next.js
+node_modules/
+.next/
+next-env.d.ts
+
+# dbt
+server/dbt/target/
+server/dbt/logs/
+server/dbt/.user.yml
+dbt/target/
+dbt/logs/
+dbt/.user.yml

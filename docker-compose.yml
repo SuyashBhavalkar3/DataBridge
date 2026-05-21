@@ -9,10 +9,17 @@ x-airflow-common: &airflow-common
     - AIRFLOW__CORE__LOAD_EXAMPLES=false
     - AIRFLOW__CORE__LOGGING_LEVEL=INFO
     - _PIP_ADDITIONAL_REQUIREMENTS=sqlalchemy psycopg2-binary great-expectations dbt-postgres dbt-bigquery python-dotenv
+    - DBT_HOST=source-db
+    - DBT_USER=postgres
+    - DBT_ENV_SECRET_PASSWORD=postgrespassword
+    - DBT_PORT=5432
+    - DBT_DBNAME=ecom_production
+    - DBT_SCHEMA=analytics
+    - DATABASE_URL=postgresql://postgres:postgrespassword@source-db:5432/ecom_production
   volumes:
-    - ./dags:/opt/airflow/dags
+    - ./server/dags:/opt/airflow/dags
     - ./server:/opt/airflow/server
-    - ./dbt:/opt/airflow/dbt
+    - ./server/dbt:/opt/airflow/dbt
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     airflow-db:
