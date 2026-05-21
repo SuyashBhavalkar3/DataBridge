@@ -1,3 +1,10 @@
 .env
 *.env
 server/.env
+dataBridge_env/
+dataBridge_env/*
+dataBridge_env
+*.db
+*.pyc
+*.pyo
+__pycache__/
